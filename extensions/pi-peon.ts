@@ -127,7 +127,8 @@ function getCandidateAdapterPaths(customPath?: string): string[] {
 
 function resolveRuntime(pi: ExtensionAPI): RuntimeInfo {
   const customPath =
-    normalizeFlagString(pi.getFlag('openpeon-script')) ||
+    normalizeFlagString(pi.getFlag('peon-script')) ||
+    process.env.PI_PEON_SCRIPT ||
     process.env.PI_OPENPEON_SCRIPT ||
     process.env.PEON_SH_PATH;
   const adapterPath = getCandidateAdapterPaths(customPath).find((candidate) =>
@@ -146,7 +147,7 @@ function resolveRuntime(pi: ExtensionAPI): RuntimeInfo {
 }
 
 function isDisabled(pi: ExtensionAPI): boolean {
-  return pi.getFlag('openpeon-disabled') === true;
+  return pi.getFlag('peon-disabled') === true;
 }
 
 function buildSessionId(ctx: ExtensionContext): string {
@@ -159,7 +160,7 @@ function buildStatusReport(
   ctx: ExtensionContext,
 ): string {
   const lines = [
-    'OpenPeon integration for pi',
+    'pi-peon integration',
     '',
     `disabled: ${isDisabled(pi) ? 'yes' : 'no'}`,
     `adapter: ${runtime.adapterPath ?? 'not found'}`,
@@ -298,7 +299,7 @@ async function previewCategory(
   if (isDisabled(pi)) {
     return {
       ok: false,
-      text: 'OpenPeon integration is disabled via --openpeon-disabled.',
+      text: 'pi-peon is disabled via --peon-disabled.',
       details: { category, mode: 'unavailable', cliAvailable: false },
     };
   }
@@ -338,7 +339,7 @@ async function previewCategory(
   const extra =
     category === 'task.progress'
       ? 'peon-ping does not expose a stable hook/preview path for task.progress yet.'
-      : 'Install peon-ping or configure --openpeon-script to enable previews.';
+      : 'Install peon-ping or configure --peon-script to enable previews.';
 
   return {
     ok: false,
@@ -353,17 +354,17 @@ async function previewCategory(
   };
 }
 
-export default function openPeonExtension(pi: ExtensionAPI) {
-  const openPeonPreviewTool = defineTool({
-    name: 'openpeon_preview',
-    label: 'OpenPeon Preview',
+export default function piPeonExtension(pi: ExtensionAPI) {
+  const peonPreviewTool = defineTool({
+    name: 'peon_preview',
+    label: 'Peon Preview',
     description:
-      'Preview an OpenPeon / peon-ping sound category. Use only when the user explicitly asks to test or preview sounds.',
+      'Preview a peon-ping / OpenPeon sound category. Use only when the user explicitly asks to test or preview sounds.',
     promptSnippet:
-      'Preview an OpenPeon sound category when the user explicitly asks to test notification sounds',
+      'Preview a peon-ping sound category when the user explicitly asks to test notification sounds',
     promptGuidelines: [
       'Do not use this tool automatically during normal coding.',
-      'Use it only when the user explicitly asks to preview or test OpenPeon / peon-ping sounds.',
+      'Use it only when the user explicitly asks to preview or test peon-ping / OpenPeon sounds.',
     ],
     parameters: Type.Object({
       category: StringEnum(ALL_CATEGORIES, {
@@ -380,18 +381,18 @@ export default function openPeonExtension(pi: ExtensionAPI) {
     },
   });
 
-  pi.registerFlag('openpeon-disabled', {
-    description: 'Disable OpenPeon / peon-ping integration for this pi run',
+  pi.registerFlag('peon-disabled', {
+    description: 'Disable pi-peon for this pi run',
     type: 'boolean',
     default: false,
   });
 
-  pi.registerFlag('openpeon-script', {
+  pi.registerFlag('peon-script', {
     description: 'Absolute path to peon.sh or peon.ps1',
     type: 'string',
   });
 
-  pi.registerTool(openPeonPreviewTool);
+  pi.registerTool(peonPreviewTool);
 
   let warnedMissingRuntime = false;
   let suppressNextComplete = false;
@@ -405,8 +406,8 @@ export default function openPeonExtension(pi: ExtensionAPI) {
       warnedMissingRuntime = true;
       ctx.ui.notify(
         runtime.cliAvailable
-          ? 'OpenPeon: peon-ping CLI was found, but the runtime hook script was not. Run /openpeon-status for setup details.'
-          : 'OpenPeon: peon-ping runtime not found. Run /openpeon-status for install instructions.',
+          ? 'pi-peon: peon-ping CLI was found, but the runtime hook script was not. Run /peon-status for setup details.'
+          : 'pi-peon: peon-ping runtime not found. Run /peon-status for install instructions.',
         'warning',
       );
       return;
@@ -423,7 +424,7 @@ export default function openPeonExtension(pi: ExtensionAPI) {
 
   pi.on('tool_result', async (event, ctx) => {
     if (isDisabled(pi)) return;
-    if (event.toolName === 'openpeon_preview') {
+    if (event.toolName === 'peon_preview') {
       suppressNextComplete = true;
       return;
     }
@@ -444,8 +445,8 @@ export default function openPeonExtension(pi: ExtensionAPI) {
     fireHook(pi, ctx, 'PreCompact');
   });
 
-  pi.registerCommand('openpeon-status', {
-    description: 'Show OpenPeon / peon-ping integration status',
+  pi.registerCommand('peon-status', {
+    description: 'Show pi-peon / peon-ping integration status',
     handler: async (args, ctx) => {
       const runtime = resolveRuntime(pi);
       const verbose = args.trim() === '--verbose';
@@ -457,34 +458,34 @@ export default function openPeonExtension(pi: ExtensionAPI) {
           result.code === 0
             ? formatCommandResult(`peon ${commandArgs.join(' ')}`, result)
             : `${buildStatusReport(pi, runtime, ctx)}\n\n${formatCommandResult(`peon ${commandArgs.join(' ')}`, result)}`;
-        await showReport(ctx, 'OpenPeon Status', report);
+        await showReport(ctx, 'pi-peon Status', report);
         return;
       }
 
       await showReport(
         ctx,
-        'OpenPeon Status',
+        'pi-peon Status',
         buildStatusReport(pi, runtime, ctx),
       );
     },
   });
 
-  pi.registerCommand('openpeon-preview', {
+  pi.registerCommand('peon-preview', {
     description:
-      'Preview an OpenPeon category (usage: /openpeon-preview <category>)',
+      'Preview a peon-ping category (usage: /peon-preview <category>)',
     handler: async (args, ctx) => {
       const raw = args.trim();
       if (!raw) {
         const runtime = resolveRuntime(pi);
         if (!runtime.cliAvailable) {
-          ctx.ui.notify('Usage: /openpeon-preview <category>', 'warning');
+          ctx.ui.notify('Usage: /peon-preview <category>', 'warning');
           return;
         }
 
         const result = await runPeon(pi, ['preview'], ctx.signal);
         await showReport(
           ctx,
-          'OpenPeon Preview',
+          'pi-peon Preview',
           formatCommandResult('peon preview', result),
         );
         return;
@@ -507,15 +508,15 @@ export default function openPeonExtension(pi: ExtensionAPI) {
     },
   });
 
-  pi.registerCommand('openpeon-packs', {
+  pi.registerCommand('peon-packs', {
     description:
-      'List or search packs (usage: /openpeon-packs [--registry|query])',
+      'List or search packs (usage: /peon-packs [--registry|query])',
     handler: async (args, ctx) => {
       const runtime = resolveRuntime(pi);
       if (!runtime.cliAvailable) {
         await showReport(
           ctx,
-          'OpenPeon Packs',
+          'pi-peon Packs',
           buildStatusReport(pi, runtime, ctx),
         );
         return;
@@ -532,19 +533,19 @@ export default function openPeonExtension(pi: ExtensionAPI) {
       const result = await runPeon(pi, commandArgs, ctx.signal);
       await showReport(
         ctx,
-        'OpenPeon Packs',
+        'pi-peon Packs',
         formatCommandResult(`peon ${commandArgs.join(' ')}`, result),
       );
     },
   });
 
-  pi.registerCommand('openpeon-install', {
+  pi.registerCommand('peon-install', {
     description:
-      'Install one or more packs (usage: /openpeon-install <pack[,pack2]>)',
+      'Install one or more packs (usage: /peon-install <pack[,pack2]>)',
     handler: async (args, ctx) => {
       const packs = args.trim();
       if (!packs) {
-        ctx.ui.notify('Usage: /openpeon-install <pack[,pack2]>', 'warning');
+        ctx.ui.notify('Usage: /peon-install <pack[,pack2]>', 'warning');
         return;
       }
 
@@ -552,7 +553,7 @@ export default function openPeonExtension(pi: ExtensionAPI) {
       if (!runtime.cliAvailable) {
         await showReport(
           ctx,
-          'OpenPeon Install',
+          'pi-peon Install',
           buildStatusReport(pi, runtime, ctx),
         );
         return;
@@ -562,7 +563,7 @@ export default function openPeonExtension(pi: ExtensionAPI) {
       const result = await runPeon(pi, commandArgs, ctx.signal);
       await showReport(
         ctx,
-        'OpenPeon Install',
+        'pi-peon Install',
         formatCommandResult(`peon ${commandArgs.join(' ')}`, result),
       );
     },

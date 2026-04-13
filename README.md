@@ -49,17 +49,17 @@ These are intentionally left as manual / best-effort for now:
 
 ## Included slash commands
 
-- `/openpeon-status`
-- `/openpeon-status --verbose`
-- `/openpeon-preview <category>`
-- `/openpeon-packs`
-- `/openpeon-packs --registry`
-- `/openpeon-packs <query>`
-- `/openpeon-install <pack[,pack2]>`
+- `/peon-status`
+- `/peon-status --verbose`
+- `/peon-preview <category>`
+- `/peon-packs`
+- `/peon-packs --registry`
+- `/peon-packs <query>`
+- `/peon-install <pack[,pack2]>`
 
 ## Included tool
 
-- `openpeon_preview`
+- `peon_preview`
 
 The LLM tool is intentionally narrow: it should only be used when the user explicitly asks to preview/test sounds.
 
@@ -96,18 +96,18 @@ pi -e /absolute/path/to/pi-peon/extensions/pi-peon.ts
 
 ## Optional flags
 
-- `--openpeon-disabled` — disable integration for one run
-- `--openpeon-script /path/to/peon.sh` — point pi at a custom `peon.sh` or `peon.ps1`
+- `--peon-disabled` — disable integration for one run
+- `--peon-script /path/to/peon.sh` — point pi at a custom `peon.sh` or `peon.ps1`
 
 ## Usage tips
 
 Test the integration quickly:
 
 ```text
-/openpeon-status
-/openpeon-preview task.complete
-/openpeon-packs --registry
-/openpeon-install glados
+/peon-status
+/peon-preview task.complete
+/peon-packs --registry
+/peon-install glados
 ```
 
 ## Future improvements
