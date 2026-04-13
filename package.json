@@ -1,6 +1,6 @@
 {
   "name": "@helle253/pi-peon",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pi extension that forwards pi lifecycle events to peon-ping / OpenPeon.",
   "type": "module",
   "packageManager": "yarn@4.13.0",
