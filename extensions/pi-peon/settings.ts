@@ -19,7 +19,9 @@ export function getProjectSettingsPath(cwd: string): string {
 }
 
 export function getSettingsPath(scope: ConfigScope, cwd: string): string {
-  return scope === 'global' ? getGlobalSettingsPath() : getProjectSettingsPath(cwd);
+  return scope === 'global'
+    ? getGlobalSettingsPath()
+    : getProjectSettingsPath(cwd);
 }
 
 export function getSettingsDisplayPath(scope: ConfigScope): string {
@@ -70,7 +72,10 @@ function loadSettingsForWrite(filePath: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-export function writeConfiguredEnabled(filePath: string, enabled: boolean): void {
+export function writeConfiguredEnabled(
+  filePath: string,
+  enabled: boolean,
+): void {
   const settings = loadSettingsForWrite(filePath);
   const currentSection = settings[SETTINGS_SECTION];
   const nextSection =

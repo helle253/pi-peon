@@ -1,0 +1,107 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+version-template: '$MAJOR.$MINOR.$PATCH'
+
+change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
+no-changes-template: '- No user-facing changes in this release.'
+template: |
+  ## Changes
+
+  $CHANGES
+
+  ## Contributors
+
+  $CONTRIBUTORS
+
+categories:
+  - title: '🚀 Features'
+    labels:
+      - 'enhancement'
+      - 'feature'
+  - title: '🐛 Fixes'
+    labels:
+      - 'bug'
+      - 'fix'
+  - title: '📚 Documentation'
+    labels:
+      - 'documentation'
+      - 'docs'
+  - title: '🧰 Maintenance'
+    labels:
+      - 'chore'
+      - 'dependencies'
+      - 'ci'
+      - 'refactor'
+
+exclude-labels:
+  - 'skip-changelog'
+
+autolabeler:
+  - label: 'breaking'
+    title:
+      - '/^[a-z]+(\([^)]+\))?!:/'
+    body:
+      - '/BREAKING[ -]CHANGE:/'
+  - label: 'feature'
+    title:
+      - '/^feat(\([^)]+\))?:/'
+    branch:
+      - '/^feat\//'
+  - label: 'fix'
+    title:
+      - '/^fix(\([^)]+\))?:/'
+    branch:
+      - '/^fix\//'
+  - label: 'docs'
+    title:
+      - '/^docs(\([^)]+\))?:/'
+    branch:
+      - '/^docs\//'
+  - label: 'chore'
+    title:
+      - '/^chore(\([^)]+\))?:/'
+    branch:
+      - '/^chore\//'
+  - label: 'ci'
+    title:
+      - '/^ci(\([^)]+\))?:/'
+    branch:
+      - '/^ci\//'
+    files:
+      - '.github/workflows/**'
+  - label: 'refactor'
+    title:
+      - '/^refactor(\([^)]+\))?:/'
+    branch:
+      - '/^refactor\//'
+  - label: 'dependencies'
+    branch:
+      - '/^dependabot\//'
+      - '/^renovate\//'
+
+version-resolver:
+  major:
+    labels:
+      - 'major'
+      - 'breaking'
+      - 'breaking-change'
+  minor:
+    labels:
+      - 'minor'
+      - 'enhancement'
+      - 'feature'
+  patch:
+    labels:
+      - 'patch'
+      - 'bug'
+      - 'fix'
+      - 'documentation'
+      - 'docs'
+      - 'chore'
+      - 'dependencies'
+      - 'ci'
+      - 'refactor'
+  default: patch
+
+sort-by: merged_at
+sort-direction: descending

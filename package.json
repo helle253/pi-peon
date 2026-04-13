@@ -1,6 +1,6 @@
 {
   "name": "@helle253/pi-peon",
-  "version": "0.1.0",
+  "version": "0.0.0-dev",
   "description": "Pi extension that forwards pi lifecycle events to peon-ping / OpenPeon.",
   "type": "module",
   "packageManager": "yarn@4.13.0",
@@ -29,7 +29,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "bundlecheck": "esbuild extensions/pi-peon.ts --bundle --platform=node --format=esm --external:@mariozechner/pi-coding-agent --outfile=/tmp/pi-peon-check.js",
     "format": "prettier --write .",
-    "check": "yarn typecheck && yarn bundlecheck"
+    "format:check": "prettier --check .",
+    "check": "yarn format:check && yarn typecheck && yarn bundlecheck"
   },
   "pi": {
     "extensions": [
