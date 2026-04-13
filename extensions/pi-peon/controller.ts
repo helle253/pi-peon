@@ -88,7 +88,10 @@ export function createPeonController(pi: ExtensionAPI): PeonController {
 
     const runtime = resolveRuntime(pi);
     if (!runtime.adapterPath) {
-      ctx.ui.notify(`${prefix}${note} ${runtimeWarningText(runtime)}`, 'warning');
+      ctx.ui.notify(
+        `${prefix}${note} ${runtimeWarningText(runtime)}`,
+        'warning',
+      );
       return;
     }
 
