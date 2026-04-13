@@ -509,8 +509,7 @@ export default function piPeonExtension(pi: ExtensionAPI) {
   });
 
   pi.registerCommand('peon-packs', {
-    description:
-      'List or search packs (usage: /peon-packs [--registry|query])',
+    description: 'List or search packs (usage: /peon-packs [--registry|query])',
     handler: async (args, ctx) => {
       const runtime = resolveRuntime(pi);
       if (!runtime.cliAvailable) {

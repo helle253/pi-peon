@@ -31,13 +31,13 @@ So for pi, the lowest-friction integration is a **thin adapter extension**, simi
 
 This extension maps pi events like this:
 
-| pi event | peon-ping hook | CESP category |
-|---|---|---|
-| `session_start` | `SessionStart` | `session.start` |
-| `input` | `UserPromptSubmit` | `task.acknowledge` / `user.spam` |
-| `tool_result` with `isError=true` | `PostToolUseFailure` | `task.error` |
-| `agent_end` | `Stop` | `task.complete` |
-| `session_before_compact` | `PreCompact` | `resource.limit` |
+| pi event                          | peon-ping hook       | CESP category                    |
+| --------------------------------- | -------------------- | -------------------------------- |
+| `session_start`                   | `SessionStart`       | `session.start`                  |
+| `input`                           | `UserPromptSubmit`   | `task.acknowledge` / `user.spam` |
+| `tool_result` with `isError=true` | `PostToolUseFailure` | `task.error`                     |
+| `agent_end`                       | `Stop`               | `task.complete`                  |
+| `session_before_compact`          | `PreCompact`         | `resource.limit`                 |
 
 ## Not auto-mapped yet
 
