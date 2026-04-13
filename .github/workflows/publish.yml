@@ -33,9 +33,6 @@ jobs:
           cache: yarn
           registry-url: https://registry.npmjs.org
 
-      - name: Enable Corepack
-        run: corepack enable
-
       - name: Install dependencies
         run: yarn install --immutable
 
@@ -47,7 +44,7 @@ jobs:
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           npm pkg set version="$TAG_VERSION"
-          echo "name=$(node -p \"require('./package.json').name\")" >> "$GITHUB_OUTPUT"
+          echo "name=$(jq -r .name package.json)" >> "$GITHUB_OUTPUT"
           echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Check whether version already exists on npm
