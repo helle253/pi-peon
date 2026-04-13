@@ -36,6 +36,49 @@ categories:
 exclude-labels:
   - 'skip-changelog'
 
+autolabeler:
+  - label: 'breaking'
+    title:
+      - '/^[a-z]+(\([^)]+\))?!:/'
+    body:
+      - '/BREAKING[ -]CHANGE:/'
+  - label: 'feature'
+    title:
+      - '/^feat(\([^)]+\))?:/'
+    branch:
+      - '/^feat\//'
+  - label: 'fix'
+    title:
+      - '/^fix(\([^)]+\))?:/'
+    branch:
+      - '/^fix\//'
+  - label: 'docs'
+    title:
+      - '/^docs(\([^)]+\))?:/'
+    branch:
+      - '/^docs\//'
+  - label: 'chore'
+    title:
+      - '/^chore(\([^)]+\))?:/'
+    branch:
+      - '/^chore\//'
+  - label: 'ci'
+    title:
+      - '/^ci(\([^)]+\))?:/'
+    branch:
+      - '/^ci\//'
+    files:
+      - '.github/workflows/**'
+  - label: 'refactor'
+    title:
+      - '/^refactor(\([^)]+\))?:/'
+    branch:
+      - '/^refactor\//'
+  - label: 'dependencies'
+    branch:
+      - '/^dependabot\//'
+      - '/^renovate\//'
+
 version-resolver:
   major:
     labels:
