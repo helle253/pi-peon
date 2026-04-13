@@ -1,0 +1,15 @@
+{
+  "name": "pi-peon",
+  "version": "0.1.0",
+  "description": "Pi extension that forwards pi lifecycle events to peon-ping / OpenPeon.",
+  "keywords": ["pi-package", "pi", "openpeon", "peon-ping", "cesp"],
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./extensions/pi-peon.ts"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  }
+}
