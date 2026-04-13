@@ -1,7 +1,7 @@
 {
   "name": "@helle253/pi-peon",
   "repository": {
-    "url": "https://github.com/helle253/pi-peon"
+    "url": "git+https://github.com/helle253/pi-peon.git"
   },
   "version": "0.0.0-dev",
   "description": "Pi extension that forwards pi lifecycle events to peon-ping / OpenPeon.",
