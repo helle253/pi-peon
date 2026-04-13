@@ -1,35 +1,18 @@
 # pi-peon
 
-A small [pi](https://pi.dev) package that hooks pi into the [OpenPeon](https://openpeon.com/) ecosystem through the existing [`peon-ping`](https://github.com/PeonPing/peon-ping) runtime.
+Thin [pi](https://pi.dev) extension that forwards pi lifecycle events to the existing [`peon-ping`](https://github.com/PeonPing/peon-ping) runtime so pi can use your OpenPeon sounds.
 
-## What this package does
+## Scope
 
-This package takes the practical route:
+This package only:
 
-- it **does not** reimplement the full CESP player in TypeScript
-- it **does** forward pi lifecycle events to `peon-ping`
-- it also adds a few pi slash commands for pack management and sound preview
+- forwards pi lifecycle events to `peon-ping`
+- adds `/peon-enable` and `/peon-disable` for session or persistent toggling
+- supports `--peon-disabled` and `--peon-script`
 
-That gives you OpenPeon sounds in pi quickly, while reusing the reference player that already handles:
+Everything else should be done with the regular `peon` CLI.
 
-- sound pack loading
-- random/no-repeat playback
-- volume/mute config
-- desktop notifications
-- pack installation and registry browsing
-
-## Why this approach
-
-After reviewing `openpeon.com`, the split is roughly:
-
-- **OpenPeon / CESP** = the open spec + registry + pack format
-- **peon-ping** = the working player/runtime that most tools integrate with today
-
-So for pi, the lowest-friction integration is a **thin adapter extension**, similar to the OpenCode adapter in `peon-ping`.
-
-## Automatic event mapping
-
-This extension maps pi events like this:
+## Event mapping
 
 | pi event                          | peon-ping hook       | CESP category                    |
 | --------------------------------- | -------------------- | -------------------------------- |
@@ -39,48 +22,25 @@ This extension maps pi events like this:
 | `agent_end`                       | `Stop`               | `task.complete`                  |
 | `session_before_compact`          | `PreCompact`         | `resource.limit`                 |
 
-## Not auto-mapped yet
+Not auto-mapped right now:
 
-These are intentionally left as manual / best-effort for now:
-
-- `input.required` — pi does not expose one global “needs approval / waiting for input” lifecycle event
-- `task.progress` — `peon-ping` does not expose a stable hook event for it yet
-- `session.end` — `session_shutdown` in pi also fires during reload/switch/fork, so auto-firing it would be noisy
-
-## Included slash commands
-
-- `/peon-status`
-- `/peon-status --verbose`
-- `/peon-preview <category>`
-- `/peon-packs`
-- `/peon-packs --registry`
-- `/peon-packs <query>`
-- `/peon-install <pack[,pack2]>`
-
-## Included tool
-
-- `peon_preview`
-
-The LLM tool is intentionally narrow: it should only be used when the user explicitly asks to preview/test sounds.
+- `input.required`
+- `task.progress`
+- `session.end`
 
 ## Install
 
 ### 1) Install peon-ping
 
-macOS / Linux:
+Install and set up [`peon-ping`](https://github.com/PeonPing/peon-ping) first.
+
+### 2) Install this package
+
+From npm:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/PeonPing/peon-ping/main/install.sh | bash
+pi install npm:@helle253/pi-peon
 ```
-
-or via Homebrew:
-
-```bash
-brew install PeonPing/tap/peon-ping
-peon-ping-setup
-```
-
-### 2) Install this pi package
 
 From this repo:
 
@@ -88,34 +48,72 @@ From this repo:
 pi install /absolute/path/to/pi-peon
 ```
 
-Or for a one-off test:
+For a one-off test:
 
 ```bash
 pi -e /absolute/path/to/pi-peon/extensions/pi-peon.ts
 ```
 
-## Optional flags
+## Usage
 
-- `--peon-disabled` — disable integration for one run
-- `--peon-script /path/to/peon.sh` — point pi at a custom `peon.sh` or `peon.ps1`
+Enabled by default.
 
-## Usage tips
+Disable hooks for one run:
 
-Test the integration quickly:
-
-```text
-/peon-status
-/peon-preview task.complete
-/peon-packs --registry
-/peon-install glados
+```bash
+pi --peon-disabled
 ```
 
-## Future improvements
+Toggle hooks only for the current session:
 
-If you want to go beyond the thin adapter, the next step would be a **native CESP player for pi** that:
+```text
+/peon-disable
+/peon-enable
+```
 
-- reads `~/.openpeon/packs/*/openpeon.json`
-- installs packs directly from the OpenPeon registry
-- plays audio without depending on `peon-ping`
+Write a persistent project or global default:
 
-This package deliberately starts smaller and more reliable.
+```text
+/peon-disable --project
+/peon-enable --project
+/peon-disable --global
+/peon-enable --global
+```
+
+The commands write to:
+
+- `.pi/settings.json` for `--project`
+- `~/.pi/agent/settings.json` for `--global`
+
+Equivalent manual config:
+
+```json
+{
+  "piPeon": {
+    "enabled": false
+  }
+}
+```
+
+Use a custom hook script:
+
+```bash
+pi --peon-script /absolute/path/to/peon.sh
+```
+
+Precedence is:
+
+1. `--peon-disabled` for the current run
+2. `/peon-enable` or `/peon-disable` for the current session
+3. `piPeon.enabled` in settings
+
+The extension looks for the standard `peon-ping` hook script automatically.
+
+## Use the peon CLI for everything else
+
+```bash
+peon status
+peon preview task.complete
+peon packs list --registry
+peon packs install glados
+```

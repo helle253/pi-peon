@@ -3,57 +3,19 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { StringEnum } from '@mariozechner/pi-ai';
-import {
-  defineTool,
-  type ExtensionAPI,
-  type ExtensionCommandContext,
-  type ExtensionContext,
+import type {
+  ExtensionAPI,
+  ExtensionContext,
 } from '@mariozechner/pi-coding-agent';
-import { Type } from '@sinclair/typebox';
 
-const ALL_CATEGORIES = [
-  'session.start',
-  'task.acknowledge',
-  'task.complete',
-  'task.error',
-  'input.required',
-  'resource.limit',
-  'user.spam',
-  'session.end',
-  'task.progress',
-] as const;
-
-const CLI_PREVIEW_CATEGORIES = [
-  'session.start',
-  'task.acknowledge',
-  'task.complete',
-  'task.error',
-  'input.required',
-  'resource.limit',
-  'user.spam',
-] as const;
-
-type Category = (typeof ALL_CATEGORIES)[number];
 type HookEvent =
   | 'SessionStart'
   | 'UserPromptSubmit'
   | 'Stop'
   | 'PostToolUseFailure'
-  | 'PermissionRequest'
-  | 'PreCompact'
-  | 'SessionEnd';
+  | 'PreCompact';
 
-const CATEGORY_TO_HOOK: Partial<Record<Category, HookEvent>> = {
-  'session.start': 'SessionStart',
-  'task.acknowledge': 'UserPromptSubmit',
-  'task.complete': 'Stop',
-  'task.error': 'PostToolUseFailure',
-  'input.required': 'PermissionRequest',
-  'resource.limit': 'PreCompact',
-  'user.spam': 'UserPromptSubmit',
-  'session.end': 'SessionEnd',
-};
+type ConfigScope = 'global' | 'project';
 
 interface RuntimeInfo {
   adapterPath?: string;
@@ -61,30 +23,11 @@ interface RuntimeInfo {
   cliAvailable: boolean;
 }
 
-interface PreviewResult {
-  ok: boolean;
-  text: string;
-  details: {
-    category: Category;
-    mode: 'cli-preview' | 'hook' | 'unavailable';
-    hookEvent?: HookEvent;
-    adapterPath?: string;
-    cliAvailable: boolean;
-  };
-}
+const SESSION_STATE_ENTRY = 'pi-peon-state';
+const SETTINGS_SECTION = 'piPeon';
 
 function fileExists(filePath: string | undefined): filePath is string {
   return !!filePath && fs.existsSync(filePath);
-}
-
-function isCategory(value: string): value is Category {
-  return (ALL_CATEGORIES as readonly string[]).includes(value);
-}
-
-function isCliPreviewCategory(
-  value: Category,
-): value is (typeof CLI_PREVIEW_CATEGORIES)[number] {
-  return (CLI_PREVIEW_CATEGORIES as readonly string[]).includes(value);
 }
 
 function commandExists(command: string): boolean {
@@ -146,56 +89,146 @@ function resolveRuntime(pi: ExtensionAPI): RuntimeInfo {
   };
 }
 
-function isDisabled(pi: ExtensionAPI): boolean {
+function isFlagDisabled(pi: ExtensionAPI): boolean {
   return pi.getFlag('peon-disabled') === true;
+}
+
+function getGlobalSettingsPath(): string {
+  return path.join(os.homedir(), '.pi', 'agent', 'settings.json');
+}
+
+function getProjectSettingsPath(cwd: string): string {
+  return path.join(cwd, '.pi', 'settings.json');
+}
+
+function getSettingsPath(scope: ConfigScope, cwd: string): string {
+  return scope === 'global' ? getGlobalSettingsPath() : getProjectSettingsPath(cwd);
+}
+
+function getSettingsDisplayPath(scope: ConfigScope): string {
+  return scope === 'global' ? '~/.pi/agent/settings.json' : '.pi/settings.json';
+}
+
+function readSessionEnabledOverride(
+  ctx: ExtensionContext,
+): boolean | undefined {
+  let enabled: boolean | undefined;
+
+  for (const entry of ctx.sessionManager.getBranch()) {
+    if (entry.type !== 'custom') continue;
+    if (entry.customType !== SESSION_STATE_ENTRY) continue;
+
+    const data = entry.data;
+    if (!data || typeof data !== 'object' || Array.isArray(data)) continue;
+
+    if ((data as { inheritConfig?: unknown }).inheritConfig === true) {
+      enabled = undefined;
+      continue;
+    }
+
+    const value = (data as { enabled?: unknown }).enabled;
+    if (typeof value === 'boolean') enabled = value;
+  }
+
+  return enabled;
+}
+
+function readJsonObject(filePath: string): Record<string, unknown> | undefined {
+  if (!fileExists(filePath)) return undefined;
+
+  try {
+    const value = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+    return value as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function readConfiguredEnabledSetting(filePath: string): boolean | undefined {
+  const settings = readJsonObject(filePath);
+  const section = settings?.[SETTINGS_SECTION];
+  if (!section || typeof section !== 'object' || Array.isArray(section)) {
+    return undefined;
+  }
+
+  const enabled = (section as { enabled?: unknown }).enabled;
+  return typeof enabled === 'boolean' ? enabled : undefined;
+}
+
+function readConfiguredEnabled(cwd: string): boolean {
+  return (
+    readConfiguredEnabledSetting(getProjectSettingsPath(cwd)) ??
+    readConfiguredEnabledSetting(getGlobalSettingsPath()) ??
+    true
+  );
+}
+
+function loadSettingsForWrite(filePath: string): Record<string, unknown> {
+  if (!fileExists(filePath)) return {};
+
+  const value = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${filePath} must contain a top-level JSON object.`);
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function writeConfiguredEnabled(filePath: string, enabled: boolean): void {
+  const settings = loadSettingsForWrite(filePath);
+  const currentSection = settings[SETTINGS_SECTION];
+  const nextSection =
+    currentSection &&
+    typeof currentSection === 'object' &&
+    !Array.isArray(currentSection)
+      ? { ...(currentSection as Record<string, unknown>), enabled }
+      : { enabled };
+
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(
+    filePath,
+    `${JSON.stringify({ ...settings, [SETTINGS_SECTION]: nextSection }, null, 2)}\n`,
+    'utf8',
+  );
+}
+
+function parseCommandScope(
+  commandName: 'peon-enable' | 'peon-disable',
+  args: string,
+): { scope?: ConfigScope; error?: string } {
+  const tokens = args.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return {};
+  if (tokens.length !== 1) {
+    return {
+      error: `Usage: /${commandName} [--project|--global]`,
+    };
+  }
+
+  if (tokens[0] === '--project') return { scope: 'project' };
+  if (tokens[0] === '--global') return { scope: 'global' };
+
+  return {
+    error: `Usage: /${commandName} [--project|--global]`,
+  };
+}
+
+function sessionScopeNote(configEnabled: boolean, enabled: boolean): string {
+  if (enabled && !configEnabled) return ' Settings still default to disabled.';
+  if (!enabled && configEnabled) return ' Settings still default to enabled.';
+  return '';
+}
+
+function runtimeWarningText(runtime: RuntimeInfo): string {
+  return runtime.cliAvailable
+    ? 'peon-ping CLI was found, but the runtime hook script was not. Configure --peon-script to point at peon.sh or peon.ps1.'
+    : 'peon-ping runtime not found. Install peon-ping or configure --peon-script to point at peon.sh or peon.ps1.';
 }
 
 function buildSessionId(ctx: ExtensionContext): string {
   return `pi-${ctx.sessionManager.getSessionId()}`;
-}
-
-function buildStatusReport(
-  pi: ExtensionAPI,
-  runtime: RuntimeInfo,
-  ctx: ExtensionContext,
-): string {
-  const lines = [
-    'pi-peon integration',
-    '',
-    `disabled: ${isDisabled(pi) ? 'yes' : 'no'}`,
-    `adapter: ${runtime.adapterPath ?? 'not found'}`,
-    `adapter kind: ${runtime.adapterKind ?? 'n/a'}`,
-    `peon CLI: ${runtime.cliAvailable ? 'available' : 'not found'}`,
-    `cwd: ${ctx.cwd}`,
-    `session id: ${buildSessionId(ctx)}`,
-    '',
-  ];
-
-  if (!runtime.adapterPath && !runtime.cliAvailable) {
-    lines.push('Install peon-ping first:');
-    lines.push(
-      'curl -fsSL https://raw.githubusercontent.com/PeonPing/peon-ping/main/install.sh | bash',
-    );
-  }
-
-  lines.push('');
-  lines.push('Automatic mappings enabled:');
-  lines.push('- session_start -> session.start');
-  lines.push('- input -> task.acknowledge / user.spam (via peon-ping)');
-  lines.push('- tool_result(isError) -> task.error');
-  lines.push('- agent_end -> task.complete');
-  lines.push('- session_before_compact -> resource.limit');
-  lines.push('');
-  lines.push('Not auto-mapped today:');
-  lines.push(
-    '- input.required (pi has no global permission/input-required event)',
-  );
-  lines.push('- task.progress (no stable peon-ping hook event today)');
-  lines.push(
-    '- session.end (session_shutdown also fires during reload/switch/fork)',
-  );
-
-  return lines.join('\n');
 }
 
 function spawnDetached(
@@ -225,7 +258,7 @@ function fireHook(
   ctx: ExtensionContext,
   hookEvent: HookEvent,
 ): boolean {
-  if (isDisabled(pi)) return false;
+  if (isFlagDisabled(pi)) return false;
 
   const runtime = resolveRuntime(pi);
   if (!runtime.adapterPath) return false;
@@ -257,130 +290,7 @@ function fireHook(
   return spawnDetached('bash', [runtime.adapterPath], payload);
 }
 
-async function runPeon(pi: ExtensionAPI, args: string[], signal?: AbortSignal) {
-  try {
-    return await pi.exec('peon', args, { signal });
-  } catch (error) {
-    return {
-      code: -1,
-      stdout: '',
-      stderr: error instanceof Error ? error.message : String(error),
-      killed: false,
-    };
-  }
-}
-
-function formatCommandResult(
-  command: string,
-  result: { code: number; stdout?: string; stderr?: string },
-): string {
-  const parts = [`$ ${command}`];
-  if (result.stdout?.trim()) parts.push(result.stdout.trimEnd());
-  if (result.stderr?.trim()) parts.push(result.stderr.trimEnd());
-  parts.push(`(exit ${result.code})`);
-  return parts.join('\n\n');
-}
-
-async function showReport(
-  ctx: ExtensionCommandContext,
-  title: string,
-  body: string,
-): Promise<void> {
-  if (!ctx.hasUI) return;
-  await ctx.ui.editor(title, body);
-}
-
-async function previewCategory(
-  pi: ExtensionAPI,
-  ctx: ExtensionContext,
-  category: Category,
-  signal?: AbortSignal,
-): Promise<PreviewResult> {
-  if (isDisabled(pi)) {
-    return {
-      ok: false,
-      text: 'pi-peon is disabled via --peon-disabled.',
-      details: { category, mode: 'unavailable', cliAvailable: false },
-    };
-  }
-
-  const runtime = resolveRuntime(pi);
-  if (isCliPreviewCategory(category) && runtime.cliAvailable) {
-    const result = await runPeon(pi, ['preview', category], signal);
-    if (result.code === 0) {
-      return {
-        ok: true,
-        text: `Previewed ${category} via \`peon preview\`.`,
-        details: {
-          category,
-          mode: 'cli-preview',
-          adapterPath: runtime.adapterPath,
-          cliAvailable: runtime.cliAvailable,
-        },
-      };
-    }
-  }
-
-  const hookEvent = CATEGORY_TO_HOOK[category];
-  if (hookEvent && fireHook(pi, ctx, hookEvent)) {
-    return {
-      ok: true,
-      text: `Emitted ${category} via hook event ${hookEvent}.`,
-      details: {
-        category,
-        mode: 'hook',
-        hookEvent,
-        adapterPath: runtime.adapterPath,
-        cliAvailable: runtime.cliAvailable,
-      },
-    };
-  }
-
-  const extra =
-    category === 'task.progress'
-      ? 'peon-ping does not expose a stable hook/preview path for task.progress yet.'
-      : 'Install peon-ping or configure --peon-script to enable previews.';
-
-  return {
-    ok: false,
-    text: `Could not preview ${category}. ${extra}`,
-    details: {
-      category,
-      mode: 'unavailable',
-      hookEvent,
-      adapterPath: runtime.adapterPath,
-      cliAvailable: runtime.cliAvailable,
-    },
-  };
-}
-
 export default function piPeonExtension(pi: ExtensionAPI) {
-  const peonPreviewTool = defineTool({
-    name: 'peon_preview',
-    label: 'Peon Preview',
-    description:
-      'Preview a peon-ping / OpenPeon sound category. Use only when the user explicitly asks to test or preview sounds.',
-    promptSnippet:
-      'Preview a peon-ping sound category when the user explicitly asks to test notification sounds',
-    promptGuidelines: [
-      'Do not use this tool automatically during normal coding.',
-      'Use it only when the user explicitly asks to preview or test peon-ping / OpenPeon sounds.',
-    ],
-    parameters: Type.Object({
-      category: StringEnum(ALL_CATEGORIES, {
-        description: 'CESP category to preview or emit.',
-      }),
-    }),
-
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const result = await previewCategory(pi, ctx, params.category, signal);
-      return {
-        content: [{ type: 'text', text: result.text }],
-        details: result.details,
-      };
-    },
-  });
-
   pi.registerFlag('peon-disabled', {
     description: 'Disable pi-peon for this pi run',
     type: 'boolean',
@@ -392,179 +302,205 @@ export default function piPeonExtension(pi: ExtensionAPI) {
     type: 'string',
   });
 
-  pi.registerTool(peonPreviewTool);
-
   let warnedMissingRuntime = false;
-  let suppressNextComplete = false;
+  let configEnabled = true;
+  let sessionEnabledOverride: boolean | undefined;
+
+  const sessionEnabled = () => sessionEnabledOverride ?? configEnabled;
+  const hooksEnabled = () => !isFlagDisabled(pi) && sessionEnabled();
+
+  const syncEnabledState = (ctx: ExtensionContext) => {
+    configEnabled = readConfiguredEnabled(ctx.cwd);
+    sessionEnabledOverride = readSessionEnabledOverride(ctx);
+  };
+
+  const setSessionEnabledOverride = (enabled: boolean) => {
+    sessionEnabledOverride = enabled;
+    pi.appendEntry(SESSION_STATE_ENTRY, { enabled });
+  };
+
+  const clearSessionEnabledOverride = () => {
+    sessionEnabledOverride = undefined;
+    pi.appendEntry(SESSION_STATE_ENTRY, { inheritConfig: true });
+  };
+
+  const notifySessionState = (
+    ctx: ExtensionContext,
+    enabled: boolean,
+    changed: boolean,
+  ) => {
+    if (!ctx.hasUI) return;
+
+    const prefix = enabled
+      ? changed
+        ? 'pi-peon enabled for this session.'
+        : 'pi-peon is already enabled for this session.'
+      : changed
+        ? 'pi-peon disabled for this session.'
+        : 'pi-peon is already disabled for this session.';
+    const note = sessionScopeNote(configEnabled, enabled);
+
+    if (isFlagDisabled(pi)) {
+      ctx.ui.notify(
+        `${prefix}${note} Hooks are still disabled for this run via --peon-disabled.`,
+        'warning',
+      );
+      return;
+    }
+
+    if (!enabled) {
+      ctx.ui.notify(`${prefix}${note}`, 'info');
+      return;
+    }
+
+    const runtime = resolveRuntime(pi);
+    if (!runtime.adapterPath) {
+      ctx.ui.notify(`${prefix}${note} ${runtimeWarningText(runtime)}`, 'warning');
+      return;
+    }
+
+    ctx.ui.notify(`${prefix}${note}`, 'info');
+  };
+
+  const setConfiguredEnabled = (
+    ctx: ExtensionContext,
+    scope: ConfigScope,
+    enabled: boolean,
+  ) => {
+    const settingsPath = getSettingsPath(scope, ctx.cwd);
+
+    try {
+      writeConfiguredEnabled(settingsPath, enabled);
+    } catch (error) {
+      if (ctx.hasUI) {
+        ctx.ui.notify(
+          `Could not update ${getSettingsDisplayPath(scope)}: ${error instanceof Error ? error.message : String(error)}`,
+          'error',
+        );
+      }
+      return;
+    }
+
+    clearSessionEnabledOverride();
+    configEnabled = readConfiguredEnabled(ctx.cwd);
+
+    if (!ctx.hasUI) return;
+
+    const scopeText =
+      scope === 'project' ? 'for this project' : 'globally';
+    let message = enabled
+      ? `pi-peon enabled by default ${scopeText}. Updated ${getSettingsDisplayPath(scope)}.`
+      : `pi-peon disabled by default ${scopeText}. Updated ${getSettingsDisplayPath(scope)}.`;
+
+    const effectiveEnabled = sessionEnabled();
+    if (scope === 'global' && effectiveEnabled !== enabled) {
+      message += ` Current project settings still keep pi-peon ${effectiveEnabled ? 'enabled' : 'disabled'} here.`;
+    }
+
+    if (isFlagDisabled(pi)) {
+      ctx.ui.notify(
+        `${message} Hooks are still disabled for this run via --peon-disabled.`,
+        'warning',
+      );
+      return;
+    }
+
+    if (enabled) {
+      const runtime = resolveRuntime(pi);
+      if (!runtime.adapterPath) {
+        ctx.ui.notify(`${message} ${runtimeWarningText(runtime)}`, 'warning');
+        return;
+      }
+    }
+
+    ctx.ui.notify(message, 'info');
+  };
+
+  pi.registerCommand('peon-enable', {
+    description:
+      'Enable pi-peon hooks for this session, or persist with --project/--global',
+    handler: async (args, ctx) => {
+      syncEnabledState(ctx);
+      const parsed = parseCommandScope('peon-enable', args);
+      if (parsed.error) {
+        if (ctx.hasUI) ctx.ui.notify(parsed.error, 'warning');
+        return;
+      }
+
+      if (parsed.scope) {
+        setConfiguredEnabled(ctx, parsed.scope, true);
+        return;
+      }
+
+      const changed = !sessionEnabled();
+      if (changed) setSessionEnabledOverride(true);
+      notifySessionState(ctx, true, changed);
+    },
+  });
+
+  pi.registerCommand('peon-disable', {
+    description:
+      'Disable pi-peon hooks for this session, or persist with --project/--global',
+    handler: async (args, ctx) => {
+      syncEnabledState(ctx);
+      const parsed = parseCommandScope('peon-disable', args);
+      if (parsed.error) {
+        if (ctx.hasUI) ctx.ui.notify(parsed.error, 'warning');
+        return;
+      }
+
+      if (parsed.scope) {
+        setConfiguredEnabled(ctx, parsed.scope, false);
+        return;
+      }
+
+      const changed = sessionEnabled();
+      if (changed) setSessionEnabledOverride(false);
+      notifySessionState(ctx, false, changed);
+    },
+  });
 
   pi.on('session_start', async (event, ctx) => {
-    if (isDisabled(pi)) return;
+    syncEnabledState(ctx);
+    if (!hooksEnabled()) return;
     if (event.reason === 'reload') return;
 
     const runtime = resolveRuntime(pi);
     if (!runtime.adapterPath && ctx.hasUI && !warnedMissingRuntime) {
       warnedMissingRuntime = true;
-      ctx.ui.notify(
-        runtime.cliAvailable
-          ? 'pi-peon: peon-ping CLI was found, but the runtime hook script was not. Run /peon-status for setup details.'
-          : 'pi-peon: peon-ping runtime not found. Run /peon-status for install instructions.',
-        'warning',
-      );
+      ctx.ui.notify(`pi-peon: ${runtimeWarningText(runtime)}`, 'warning');
       return;
     }
 
     fireHook(pi, ctx, 'SessionStart');
   });
 
+  pi.on('session_tree', async (_event, ctx) => {
+    syncEnabledState(ctx);
+  });
+
+  pi.on('session_compact', async (_event, ctx) => {
+    syncEnabledState(ctx);
+  });
+
   pi.on('input', async (event, ctx) => {
-    if (isDisabled(pi)) return;
+    if (!hooksEnabled()) return;
     if (event.source === 'extension') return;
     fireHook(pi, ctx, 'UserPromptSubmit');
   });
 
   pi.on('tool_result', async (event, ctx) => {
-    if (isDisabled(pi)) return;
-    if (event.toolName === 'peon_preview') {
-      suppressNextComplete = true;
-      return;
-    }
+    if (!hooksEnabled()) return;
     if (event.isError) fireHook(pi, ctx, 'PostToolUseFailure');
   });
 
   pi.on('agent_end', async (_event, ctx) => {
-    if (isDisabled(pi)) return;
-    if (suppressNextComplete) {
-      suppressNextComplete = false;
-      return;
-    }
+    if (!hooksEnabled()) return;
     fireHook(pi, ctx, 'Stop');
   });
 
   pi.on('session_before_compact', async (_event, ctx) => {
-    if (isDisabled(pi)) return;
+    if (!hooksEnabled()) return;
     fireHook(pi, ctx, 'PreCompact');
-  });
-
-  pi.registerCommand('peon-status', {
-    description: 'Show pi-peon / peon-ping integration status',
-    handler: async (args, ctx) => {
-      const runtime = resolveRuntime(pi);
-      const verbose = args.trim() === '--verbose';
-
-      if (runtime.cliAvailable) {
-        const commandArgs = ['status', ...(verbose ? ['--verbose'] : [])];
-        const result = await runPeon(pi, commandArgs, ctx.signal);
-        const report =
-          result.code === 0
-            ? formatCommandResult(`peon ${commandArgs.join(' ')}`, result)
-            : `${buildStatusReport(pi, runtime, ctx)}\n\n${formatCommandResult(`peon ${commandArgs.join(' ')}`, result)}`;
-        await showReport(ctx, 'pi-peon Status', report);
-        return;
-      }
-
-      await showReport(
-        ctx,
-        'pi-peon Status',
-        buildStatusReport(pi, runtime, ctx),
-      );
-    },
-  });
-
-  pi.registerCommand('peon-preview', {
-    description:
-      'Preview a peon-ping category (usage: /peon-preview <category>)',
-    handler: async (args, ctx) => {
-      const raw = args.trim();
-      if (!raw) {
-        const runtime = resolveRuntime(pi);
-        if (!runtime.cliAvailable) {
-          ctx.ui.notify('Usage: /peon-preview <category>', 'warning');
-          return;
-        }
-
-        const result = await runPeon(pi, ['preview'], ctx.signal);
-        await showReport(
-          ctx,
-          'pi-peon Preview',
-          formatCommandResult('peon preview', result),
-        );
-        return;
-      }
-
-      if (!isCategory(raw)) {
-        ctx.ui.notify(
-          `Unknown category. Valid values: ${ALL_CATEGORIES.join(', ')}`,
-          'warning',
-        );
-        return;
-      }
-
-      const result = await previewCategory(pi, ctx, raw, ctx.signal);
-      if (result.ok) {
-        ctx.ui.notify(result.text, 'info');
-      } else {
-        ctx.ui.notify(result.text, 'warning');
-      }
-    },
-  });
-
-  pi.registerCommand('peon-packs', {
-    description: 'List or search packs (usage: /peon-packs [--registry|query])',
-    handler: async (args, ctx) => {
-      const runtime = resolveRuntime(pi);
-      if (!runtime.cliAvailable) {
-        await showReport(
-          ctx,
-          'pi-peon Packs',
-          buildStatusReport(pi, runtime, ctx),
-        );
-        return;
-      }
-
-      const trimmed = args.trim();
-      const commandArgs =
-        trimmed.length === 0
-          ? ['packs', 'list']
-          : trimmed === '--registry'
-            ? ['packs', 'list', '--registry']
-            : ['packs', 'search', trimmed];
-
-      const result = await runPeon(pi, commandArgs, ctx.signal);
-      await showReport(
-        ctx,
-        'pi-peon Packs',
-        formatCommandResult(`peon ${commandArgs.join(' ')}`, result),
-      );
-    },
-  });
-
-  pi.registerCommand('peon-install', {
-    description:
-      'Install one or more packs (usage: /peon-install <pack[,pack2]>)',
-    handler: async (args, ctx) => {
-      const packs = args.trim();
-      if (!packs) {
-        ctx.ui.notify('Usage: /peon-install <pack[,pack2]>', 'warning');
-        return;
-      }
-
-      const runtime = resolveRuntime(pi);
-      if (!runtime.cliAvailable) {
-        await showReport(
-          ctx,
-          'pi-peon Install',
-          buildStatusReport(pi, runtime, ctx),
-        );
-        return;
-      }
-
-      const commandArgs = ['packs', 'install', packs];
-      const result = await runPeon(pi, commandArgs, ctx.signal);
-      await showReport(
-        ctx,
-        'pi-peon Install',
-        formatCommandResult(`peon ${commandArgs.join(' ')}`, result),
-      );
-    },
   });
 }

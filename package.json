@@ -1,5 +1,5 @@
 {
-  "name": "pi-peon",
+  "name": "@helle253/pi-peon",
   "version": "0.1.0",
   "description": "Pi extension that forwards pi lifecycle events to peon-ping / OpenPeon.",
   "type": "module",
@@ -13,6 +13,9 @@
     "cesp"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "extensions",
     "README.md",
@@ -24,7 +27,7 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "bundlecheck": "esbuild extensions/pi-peon.ts --bundle --platform=node --format=esm --external:@mariozechner/pi-ai --external:@mariozechner/pi-coding-agent --external:@sinclair/typebox --outfile=/tmp/pi-peon-check.js",
+    "bundlecheck": "esbuild extensions/pi-peon.ts --bundle --platform=node --format=esm --external:@mariozechner/pi-coding-agent --outfile=/tmp/pi-peon-check.js",
     "format": "prettier --write .",
     "check": "yarn typecheck && yarn bundlecheck"
   },
@@ -34,14 +37,10 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": "*",
-    "@sinclair/typebox": "*"
+    "@mariozechner/pi-coding-agent": "*"
   },
   "devDependencies": {
-    "@mariozechner/pi-ai": "^0.66.1",
     "@mariozechner/pi-coding-agent": "^0.66.1",
-    "@sinclair/typebox": "^0.34.49",
     "@types/node": "^24.3.0",
     "esbuild": "^0.25.3",
     "prettier": "^3.5.3",
